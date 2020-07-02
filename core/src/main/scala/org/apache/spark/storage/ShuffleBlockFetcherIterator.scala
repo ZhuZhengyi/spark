@@ -153,6 +153,7 @@ final class ShuffleBlockFetcherIterator(
   @GuardedBy("this")
   private[this] val shuffleFilesSet = mutable.HashSet[DownloadFile]()
 
+  //initialize_share()
   initialize()
 
   // Decrements the buffer reference count.
@@ -260,6 +261,23 @@ final class ShuffleBlockFetcherIterator(
       shuffleClient.fetchBlocks(address.host, address.port, address.executorId, blockIds.toArray,
         blockFetchingListener, null)
     }
+  }
+
+  private[this] def initLocalBlocks(): Unit = {
+    for ((address, blockInfos) <- blocksByAddress) {
+        blockInfos.find(_._2 <= 0) match {
+          case Some((blockId, size)) if size < 0 =>
+            throw new BlockException(blockId, "Negative block size " + size)
+          case Some((blockId, size)) if size == 0 =>
+            throw new BlockException(blockId, "Zero-sized blocks should be excluded.")
+          case None => // do nothing.
+//        }
+        localBlocks ++= blockInfos.map(_._1)
+        numBlocksToFetch += localBlocks.size
+      }
+    }
+    logInfo(s"Getting $numBlocksToFetch non-empty blocks including ${localBlocks.size}" +
+      s" local blocks and ${remoteBlocks.size} remote blocks")
   }
 
   private[this] def splitLocalRemoteBlocks(): ArrayBuffer[FetchRequest] = {
@@ -371,6 +389,18 @@ final class ShuffleBlockFetcherIterator(
     fetchLocalBlocks()
     logDebug("Got local blocks in " + Utils.getUsedTimeMs(startTime))
   }
+
+  private[this] def initialize_share(): Unit = {
+    context.addTaskCompletionListener[Unit](_ => cleanup())
+
+    initLocalBlocks()
+
+    fetchLocalBlocks()
+
+    logDebug("Got local blocks in " + Utils.getUsedTimeMs(startTime))
+
+  }
+
 
   override def hasNext: Boolean = numBlocksProcessed < numBlocksToFetch
 
