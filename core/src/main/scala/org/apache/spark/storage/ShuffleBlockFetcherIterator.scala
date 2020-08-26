@@ -153,8 +153,8 @@ final class ShuffleBlockFetcherIterator(
   @GuardedBy("this")
   private[this] val shuffleFilesSet = mutable.HashSet[DownloadFile]()
 
-  //initialize_share()
-  initialize()
+  initialize_share()
+  //initialize()
 
   // Decrements the buffer reference count.
   // The currentResult is set to null to prevent releasing the buffer again on cleanup()
@@ -265,16 +265,17 @@ final class ShuffleBlockFetcherIterator(
 
   private[this] def initLocalBlocks(): Unit = {
     for ((address, blockInfos) <- blocksByAddress) {
-        blockInfos.find(_._2 <= 0) match {
-          case Some((blockId, size)) if size < 0 =>
-            throw new BlockException(blockId, "Negative block size " + size)
-          case Some((blockId, size)) if size == 0 =>
-            throw new BlockException(blockId, "Zero-sized blocks should be excluded.")
-          case None => // do nothing.
-//        }
-        localBlocks ++= blockInfos.map(_._1)
-        numBlocksToFetch += localBlocks.size
-      }
+      blockInfos.find(_._2 <= 0) match {
+				case Some((blockId, size)) if size < 0 =>
+					throw new BlockException(blockId, "Negative block size " + size)
+				case Some((blockId, size)) if size == 0 =>
+					throw new BlockException(blockId, "Zero-sized blocks should be excluded.")
+				case None => // do nothing.
+			}
+			localBlocks ++= blockInfos.map(_._1)
+			numBlocksToFetch += localBlocks.size
+      logInfo(s"init local blocks ${address} ${blockInfos}")
+      //}
     }
     logInfo(s"Getting $numBlocksToFetch non-empty blocks including ${localBlocks.size}" +
       s" local blocks and ${remoteBlocks.size} remote blocks")
@@ -351,6 +352,7 @@ final class ShuffleBlockFetcherIterator(
     while (iter.hasNext) {
       val blockId = iter.next()
       try {
+        logInfo(s"fetchLocalBlocks ${blockId}")
         val buf = blockManager.getBlockData(blockId)
         shuffleMetrics.incLocalBlocksFetched(1)
         shuffleMetrics.incLocalBytesRead(buf.size)
